@@ -5,6 +5,8 @@ import {AccessControl} from "openzeppelin-contracts/contracts/access/AccessContr
 
 contract SimpleVotingSystem is AccessControl {
 
+    bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
+
     enum WorkflowStatus {
         REGISTER_CANDIDATES,
         FOUND_CANDIDATES,
@@ -13,10 +15,12 @@ contract SimpleVotingSystem is AccessControl {
     }
 
     WorkflowStatus public workflowStatus;
+    uint256 public voteStartTime;
 
     struct Candidate {
         uint id;
         string name;
+        address payable candidateAddress;
         uint voteCount;
     }
 
@@ -25,6 +29,7 @@ contract SimpleVotingSystem is AccessControl {
     uint[] private candidateIds;
 
     event WorkflowStatusChange(WorkflowStatus previousStatus, WorkflowStatus newStatus);
+    event CandidateFunded(uint indexed candidateId, uint amount);
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -33,22 +38,42 @@ contract SimpleVotingSystem is AccessControl {
     function setWorkflowStatus(WorkflowStatus _status) public onlyRole(DEFAULT_ADMIN_ROLE) {
         WorkflowStatus previousStatus = workflowStatus;
         workflowStatus = _status;
+        
+        if (_status == WorkflowStatus.VOTE) {
+            voteStartTime = block.timestamp;
+        }
+
         emit WorkflowStatusChange(previousStatus, _status);
     }
 
-    function addCandidate(string memory _name) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        // possible que pendant l'enregistrement
+    function addCandidate(string memory _name, address _candidateAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
         require(workflowStatus == WorkflowStatus.REGISTER_CANDIDATES, "Candidates registration is not open");
-        
         require(bytes(_name).length > 0, "Candidate name cannot be empty");
+        require(_candidateAddress != address(0), "Candidate address cannot be zero");
+
         uint candidateId = candidateIds.length + 1;
-        candidates[candidateId] = Candidate(candidateId, _name, 0);
+        candidates[candidateId] = Candidate(candidateId, _name, payable(_candidateAddress), 0);
         candidateIds.push(candidateId);
     }
 
+    function fundCandidate(uint _candidateId) public payable onlyRole(FOUNDER_ROLE) {
+        require(workflowStatus == WorkflowStatus.FOUND_CANDIDATES, "Funding candidates is not open");
+        require(_candidateId > 0 && _candidateId <= candidateIds.length, "Invalid candidate ID");
+        require(msg.value > 0, "You must send some ether");
+
+        Candidate storage candidate = candidates[_candidateId];
+        
+        (bool success, ) = candidate.candidateAddress.call{value: msg.value}("");
+        require(success, "Transfer failed");
+
+        emit CandidateFunded(_candidateId, msg.value);
+    }
+
     function vote(uint _candidateId) public {
-        // possible que pendant le vote
         require(workflowStatus == WorkflowStatus.VOTE, "Voting session is not open");
+        
+        // délai de 1h
+        require(block.timestamp >= voteStartTime + 1 hours, "Voting starts 1 hour after session open");
         
         require(!voters[msg.sender], "You have already voted");
         require(_candidateId > 0 && _candidateId <= candidateIds.length, "Invalid candidate ID");

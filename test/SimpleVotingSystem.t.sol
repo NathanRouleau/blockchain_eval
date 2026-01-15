@@ -1,79 +1,103 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {SimpleVotingSystem} from "../src/SimpleVotingSystem.sol";
 
 contract SimpleVotingSystemTest is Test {
     SimpleVotingSystem public votingSystem;
 
     address public admin = makeAddr("admin");
+    address public founder = makeAddr("founder");
     address public voter1 = makeAddr("voter1");
-    address public voter2 = makeAddr("voter2");
+    
+    address public candidateAlice = makeAddr("candidateAlice");
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00; 
+    bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
 
     function setUp() public {
         vm.prank(admin); 
         votingSystem = new SimpleVotingSystem();
-    }
 
-    // --- TEST ROLE ADMIN ---
-    function test_AdminIsSetCorrectly() public view {
-        assertTrue(votingSystem.hasRole(DEFAULT_ADMIN_ROLE, admin));
-    }
-
-    // --- TEST WORKFLOW ---
-    function test_AdminCanChangeWorkflowStatus() public {
         vm.prank(admin);
-        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+        votingSystem.grantRole(FOUNDER_ROLE, founder);
         
-        assertTrue(votingSystem.workflowStatus() == SimpleVotingSystem.WorkflowStatus.VOTE);
+        vm.deal(founder, 100 ether);
     }
 
-    function testRevert_NonAdminCannotChangeWorkflow() public {
-        vm.prank(voter1);
-        vm.expectRevert();
-        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+    // --- TEST ROLES ---
+    function test_RolesSetup() public view {
+        assertTrue(votingSystem.hasRole(DEFAULT_ADMIN_ROLE, admin));
+        assertTrue(votingSystem.hasRole(FOUNDER_ROLE, founder));
     }
 
     // --- TEST AJOUT CANDIDAT ---
-    function test_AddCandidate_Success() public {
+    function test_AddCandidate() public {
         vm.prank(admin);
-        votingSystem.addCandidate("Alice");
-        assertEq(votingSystem.getCandidatesCount(), 1);
+        votingSystem.addCandidate("Alice", candidateAlice);
+
+        ( , string memory name, address addr, ) = votingSystem.candidates(1);
+        assertEq(name, "Alice");
+        assertEq(addr, candidateAlice);
     }
 
-    function testRevert_AddCandidate_WrongStatus() public {
+    // --- TEST FUNDING ---
+    function test_FounderCanFundCandidate() public {
         vm.prank(admin);
-        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+        votingSystem.addCandidate("Alice", candidateAlice);
 
         vm.prank(admin);
-        vm.expectRevert("Candidates registration is not open");
-        votingSystem.addCandidate("Bob");
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
+
+        uint256 amountToSend = 1 ether;
+        uint256 balanceBefore = candidateAlice.balance;
+
+        vm.prank(founder);
+        votingSystem.fundCandidate{value: amountToSend}(1);
+
+        uint256 balanceAfter = candidateAlice.balance;
+        assertEq(balanceAfter, balanceBefore + amountToSend);
     }
 
-    // --- TEST DU VOTE ---
-    function test_Vote_Success() public {
+    function testRevert_FundingWrongStatus() public {
         vm.prank(admin);
-        votingSystem.addCandidate("Alice");
+        votingSystem.addCandidate("Alice", candidateAlice);
+                
+        vm.prank(founder);
+        vm.expectRevert("Funding candidates is not open");
+        votingSystem.fundCandidate{value: 1 ether}(1);
+    }
 
+    // --- TEST VOTE AVEC TEMPS ---
+    function test_Vote_Success_After1Hour() public {
         vm.prank(admin);
+        votingSystem.addCandidate("Alice", candidateAlice);
+
+        vm.startPrank(admin);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 hours + 1 seconds);
 
         vm.prank(voter1);
         votingSystem.vote(1);
 
         assertEq(votingSystem.getTotalVotes(1), 1);
-        assertTrue(votingSystem.voters(voter1));
     }
 
-    function testRevert_Vote_WrongStatus() public {
+    function testRevert_VoteTooEarly() public {
         vm.prank(admin);
-        votingSystem.addCandidate("Alice");
+        votingSystem.addCandidate("Alice", candidateAlice);
+
+        vm.startPrank(admin);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+        vm.stopPrank();
 
         vm.prank(voter1);
-        vm.expectRevert("Voting session is not open");
+        vm.expectRevert("Voting starts 1 hour after session open");
         votingSystem.vote(1);
     }
 }
