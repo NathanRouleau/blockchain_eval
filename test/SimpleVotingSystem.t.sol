@@ -3,9 +3,11 @@ pragma solidity 0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
 import {SimpleVotingSystem} from "../src/SimpleVotingSystem.sol";
+import {VotingNFT} from "../src/VotingNFT.sol";
 
 contract SimpleVotingSystemTest is Test {
     SimpleVotingSystem public votingSystem;
+    VotingNFT public votingNFT;
 
     address public admin = makeAddr("admin");
     address public founder = makeAddr("founder");
@@ -19,6 +21,7 @@ contract SimpleVotingSystemTest is Test {
     function setUp() public {
         vm.prank(admin); 
         votingSystem = new SimpleVotingSystem();
+        votingNFT = votingSystem.votingNFT();
 
         vm.prank(admin);
         votingSystem.grantRole(FOUNDER_ROLE, founder);
@@ -30,6 +33,11 @@ contract SimpleVotingSystemTest is Test {
     function test_RolesSetup() public view {
         assertTrue(votingSystem.hasRole(DEFAULT_ADMIN_ROLE, admin));
         assertTrue(votingSystem.hasRole(FOUNDER_ROLE, founder));
+    }
+
+    function test_NFTIsDeployed() public view {
+        assertTrue(address(votingNFT) != address(0));
+        assertEq(votingNFT.owner(), address(votingSystem));
     }
 
     // --- TEST AJOUT CANDIDAT ---
@@ -69,8 +77,8 @@ contract SimpleVotingSystemTest is Test {
         votingSystem.fundCandidate{value: 1 ether}(1);
     }
 
-    // --- TEST VOTE AVEC TEMPS ---
-    function test_Vote_Success_After1Hour() public {
+    // --- TEST VOTE & NFT ---
+    function test_Vote_MintNFT() public {
         vm.prank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
 
@@ -80,24 +88,29 @@ contract SimpleVotingSystemTest is Test {
         vm.stopPrank();
 
         vm.warp(block.timestamp + 1 hours + 1 seconds);
+        assertEq(votingNFT.balanceOf(voter1), 0);
 
         vm.prank(voter1);
         votingSystem.vote(1);
 
+        assertEq(votingNFT.balanceOf(voter1), 1);
         assertEq(votingSystem.getTotalVotes(1), 1);
     }
 
-    function testRevert_VoteTooEarly() public {
+    function testRevert_CannotVoteTwice_WithNFT() public {
         vm.prank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
-
         vm.startPrank(admin);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
         vm.stopPrank();
+        vm.warp(block.timestamp + 1 hours + 1 seconds);
 
         vm.prank(voter1);
-        vm.expectRevert("Voting starts 1 hour after session open");
+        votingSystem.vote(1);
+
+        vm.prank(voter1);
+        vm.expectRevert("You already have the voting NFT");
         votingSystem.vote(1);
     }
 }

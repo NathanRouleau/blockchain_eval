@@ -2,9 +2,9 @@
 pragma solidity 0.8.26;
 
 import {AccessControl} from "openzeppelin-contracts/contracts/access/AccessControl.sol";
+import {VotingNFT} from "./VotingNFT.sol";
 
 contract SimpleVotingSystem is AccessControl {
-
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
 
     enum WorkflowStatus {
@@ -16,6 +16,8 @@ contract SimpleVotingSystem is AccessControl {
 
     WorkflowStatus public workflowStatus;
     uint256 public voteStartTime;
+
+    VotingNFT public votingNFT;
 
     struct Candidate {
         uint id;
@@ -33,6 +35,7 @@ contract SimpleVotingSystem is AccessControl {
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        votingNFT = new VotingNFT();
     }
 
     function setWorkflowStatus(WorkflowStatus _status) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -71,15 +74,17 @@ contract SimpleVotingSystem is AccessControl {
 
     function vote(uint _candidateId) public {
         require(workflowStatus == WorkflowStatus.VOTE, "Voting session is not open");
-        
-        // délai de 1h
         require(block.timestamp >= voteStartTime + 1 hours, "Voting starts 1 hour after session open");
         
+        require(votingNFT.balanceOf(msg.sender) == 0, "You already have the voting NFT");
         require(!voters[msg.sender], "You have already voted");
+        
         require(_candidateId > 0 && _candidateId <= candidateIds.length, "Invalid candidate ID");
 
         voters[msg.sender] = true;
         candidates[_candidateId].voteCount += 1;
+
+        votingNFT.mint(msg.sender);
     }
 
     function getTotalVotes(uint _candidateId) public view returns (uint) {
