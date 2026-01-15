@@ -7,6 +7,7 @@ import {VotingNFT} from "./VotingNFT.sol";
 contract SimpleVotingSystem is AccessControl {
 
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
+    bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
     enum WorkflowStatus {
         REGISTER_CANDIDATES,
@@ -33,11 +34,14 @@ contract SimpleVotingSystem is AccessControl {
 
     event WorkflowStatusChange(WorkflowStatus previousStatus, WorkflowStatus newStatus);
     event CandidateFunded(uint indexed candidateId, uint amount);
+    event FundsWithdrawn(address indexed withdrawer, uint amount);
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         votingNFT = new VotingNFT();
     }
+
+    receive() external payable {}
 
     function setWorkflowStatus(WorkflowStatus _status) public onlyRole(DEFAULT_ADMIN_ROLE) {
         WorkflowStatus previousStatus = workflowStatus;
@@ -86,6 +90,17 @@ contract SimpleVotingSystem is AccessControl {
         candidates[_candidateId].voteCount += 1;
 
         votingNFT.mint(msg.sender);
+    }
+
+    function withdraw() public onlyRole(WITHDRAWER_ROLE) {
+        require(workflowStatus == WorkflowStatus.COMPLETED, "Voting session is not completed");
+        require(address(this).balance > 0, "No funds to withdraw");
+
+        uint amount = address(this).balance;
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Withdraw transfer failed");
+
+        emit FundsWithdrawn(msg.sender, amount);
     }
 
     function getWinner() public view returns (Candidate memory) {

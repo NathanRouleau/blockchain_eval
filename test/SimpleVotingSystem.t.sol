@@ -11,6 +11,7 @@ contract SimpleVotingSystemTest is Test {
 
     address public admin = makeAddr("admin");
     address public founder = makeAddr("founder");
+    address public withdrawer = makeAddr("withdrawer");
     address public voter1 = makeAddr("voter1");
     
     address public candidateAlice = makeAddr("candidateAlice");
@@ -18,14 +19,17 @@ contract SimpleVotingSystemTest is Test {
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00; 
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
+    bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
     function setUp() public {
         vm.prank(admin); 
         votingSystem = new SimpleVotingSystem();
         votingNFT = votingSystem.votingNFT();
 
-        vm.prank(admin);
+        vm.startPrank(admin);
         votingSystem.grantRole(FOUNDER_ROLE, founder);
+        votingSystem.grantRole(WITHDRAWER_ROLE, withdrawer);
+        vm.stopPrank();
         
         vm.deal(founder, 100 ether);
     }
@@ -116,36 +120,53 @@ contract SimpleVotingSystemTest is Test {
     }
 
     function test_GetWinner() public {
-        // 1. Setup : Alice (ID 1) et Bob (ID 2)
         vm.startPrank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
         votingSystem.addCandidate("Bob", candidateBob);
         
-        // On passe en mode vote
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
         vm.stopPrank();
 
         vm.warp(block.timestamp + 1 hours + 1 seconds);
 
-        // 2. Vote : Voter1 vote pour Bob (ID 2)
         vm.prank(voter1);
         votingSystem.vote(2);
 
-        // 3. On essaie de voir le vainqueur AVANT la fin -> Doit échouer
         vm.expectRevert("Voting session is not completed");
         votingSystem.getWinner();
 
-        // 4. L'admin termine le vote
         vm.prank(admin);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.COMPLETED);
 
-        // 5. On récupère le vainqueur
         SimpleVotingSystem.Candidate memory winner = votingSystem.getWinner();
         
-        // Bob devrait gagner (ID 2, Name Bob)
         assertEq(winner.id, 2);
         assertEq(winner.name, "Bob");
         assertEq(winner.voteCount, 1);
+    }
+
+    function test_Withdraw() public {
+        vm.deal(address(123), 10 ether);
+        vm.prank(address(123));
+        (bool sent, ) = address(votingSystem).call{value: 5 ether}("");
+        require(sent, "Sending eth failed");
+
+        assertEq(address(votingSystem).balance, 5 ether);
+
+        vm.prank(withdrawer);
+        vm.expectRevert("Voting session is not completed");
+        votingSystem.withdraw();
+
+        vm.prank(admin);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.COMPLETED);
+
+        uint balanceBefore = withdrawer.balance;
+        
+        vm.prank(withdrawer);
+        votingSystem.withdraw();
+
+        assertEq(address(votingSystem).balance, 0);
+        assertEq(withdrawer.balance, balanceBefore + 5 ether);
     }
 }
