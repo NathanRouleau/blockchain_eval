@@ -5,6 +5,7 @@ import {AccessControl} from "openzeppelin-contracts/contracts/access/AccessContr
 import {VotingNFT} from "./VotingNFT.sol";
 
 contract SimpleVotingSystem is AccessControl {
+
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
 
     enum WorkflowStatus {
@@ -85,6 +86,24 @@ contract SimpleVotingSystem is AccessControl {
         candidates[_candidateId].voteCount += 1;
 
         votingNFT.mint(msg.sender);
+    }
+
+    function getWinner() public view returns (Candidate memory) {
+        require(workflowStatus == WorkflowStatus.COMPLETED, "Voting session is not completed");
+        require(candidateIds.length > 0, "No candidates available");
+
+        uint winningCandidateId = candidateIds[0];
+        uint maxVotes = candidates[winningCandidateId].voteCount;
+
+        for (uint i = 1; i < candidateIds.length; i++) {
+            uint currentId = candidateIds[i];
+            if (candidates[currentId].voteCount > maxVotes) {
+                maxVotes = candidates[currentId].voteCount;
+                winningCandidateId = currentId;
+            }
+        }
+
+        return candidates[winningCandidateId];
     }
 
     function getTotalVotes(uint _candidateId) public view returns (uint) {

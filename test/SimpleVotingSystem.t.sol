@@ -14,6 +14,7 @@ contract SimpleVotingSystemTest is Test {
     address public voter1 = makeAddr("voter1");
     
     address public candidateAlice = makeAddr("candidateAlice");
+    address public candidateBob = makeAddr("candidateBob");
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00; 
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
@@ -112,5 +113,39 @@ contract SimpleVotingSystemTest is Test {
         vm.prank(voter1);
         vm.expectRevert("You already have the voting NFT");
         votingSystem.vote(1);
+    }
+
+    function test_GetWinner() public {
+        // 1. Setup : Alice (ID 1) et Bob (ID 2)
+        vm.startPrank(admin);
+        votingSystem.addCandidate("Alice", candidateAlice);
+        votingSystem.addCandidate("Bob", candidateBob);
+        
+        // On passe en mode vote
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 hours + 1 seconds);
+
+        // 2. Vote : Voter1 vote pour Bob (ID 2)
+        vm.prank(voter1);
+        votingSystem.vote(2);
+
+        // 3. On essaie de voir le vainqueur AVANT la fin -> Doit échouer
+        vm.expectRevert("Voting session is not completed");
+        votingSystem.getWinner();
+
+        // 4. L'admin termine le vote
+        vm.prank(admin);
+        votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.COMPLETED);
+
+        // 5. On récupère le vainqueur
+        SimpleVotingSystem.Candidate memory winner = votingSystem.getWinner();
+        
+        // Bob devrait gagner (ID 2, Name Bob)
+        assertEq(winner.id, 2);
+        assertEq(winner.name, "Bob");
+        assertEq(winner.voteCount, 1);
     }
 }
