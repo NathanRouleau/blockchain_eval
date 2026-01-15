@@ -7,7 +7,7 @@ import {SimpleVotingSystem} from "../src/SimpleVotingSystem.sol";
 contract DeploySimpleVotingSystem is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("SEPOLIA_PRIVATE_KEY");
-        
+
         vm.startBroadcast(deployerPrivateKey);
 
         SimpleVotingSystem votingSystem = new SimpleVotingSystem();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {SimpleVotingSystem} from "../src/SimpleVotingSystem.sol";
 import {VotingNFT} from "../src/VotingNFT.sol";
 
@@ -13,16 +13,16 @@ contract SimpleVotingSystemTest is Test {
     address public founder = makeAddr("founder");
     address public withdrawer = makeAddr("withdrawer");
     address public voter1 = makeAddr("voter1");
-    
+
     address public candidateAlice = makeAddr("candidateAlice");
     address public candidateBob = makeAddr("candidateBob");
 
-    bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00; 
+    bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
     bytes32 public constant FOUNDER_ROLE = keccak256("FOUNDER_ROLE");
     bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
     function setUp() public {
-        vm.prank(admin); 
+        vm.prank(admin);
         votingSystem = new SimpleVotingSystem();
         votingNFT = votingSystem.votingNFT();
 
@@ -30,7 +30,7 @@ contract SimpleVotingSystemTest is Test {
         votingSystem.grantRole(FOUNDER_ROLE, founder);
         votingSystem.grantRole(WITHDRAWER_ROLE, withdrawer);
         vm.stopPrank();
-        
+
         vm.deal(founder, 100 ether);
     }
 
@@ -50,7 +50,7 @@ contract SimpleVotingSystemTest is Test {
         vm.prank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
 
-        ( , string memory name, address addr, ) = votingSystem.candidates(1);
+        (, string memory name, address addr,) = votingSystem.candidates(1);
         assertEq(name, "Alice");
         assertEq(addr, candidateAlice);
     }
@@ -76,7 +76,7 @@ contract SimpleVotingSystemTest is Test {
     function testRevert_FundingWrongStatus() public {
         vm.prank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
-                
+
         vm.prank(founder);
         vm.expectRevert("Funding candidates is not open");
         votingSystem.fundCandidate{value: 1 ether}(1);
@@ -123,7 +123,7 @@ contract SimpleVotingSystemTest is Test {
         vm.startPrank(admin);
         votingSystem.addCandidate("Alice", candidateAlice);
         votingSystem.addCandidate("Bob", candidateBob);
-        
+
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.FOUND_CANDIDATES);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.VOTE);
         vm.stopPrank();
@@ -140,7 +140,7 @@ contract SimpleVotingSystemTest is Test {
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.COMPLETED);
 
         SimpleVotingSystem.Candidate memory winner = votingSystem.getWinner();
-        
+
         assertEq(winner.id, 2);
         assertEq(winner.name, "Bob");
         assertEq(winner.voteCount, 1);
@@ -149,7 +149,7 @@ contract SimpleVotingSystemTest is Test {
     function test_Withdraw() public {
         vm.deal(address(123), 10 ether);
         vm.prank(address(123));
-        (bool sent, ) = address(votingSystem).call{value: 5 ether}("");
+        (bool sent,) = address(votingSystem).call{value: 5 ether}("");
         require(sent, "Sending eth failed");
 
         assertEq(address(votingSystem).balance, 5 ether);
@@ -161,8 +161,8 @@ contract SimpleVotingSystemTest is Test {
         vm.prank(admin);
         votingSystem.setWorkflowStatus(SimpleVotingSystem.WorkflowStatus.COMPLETED);
 
-        uint balanceBefore = withdrawer.balance;
-        
+        uint256 balanceBefore = withdrawer.balance;
+
         vm.prank(withdrawer);
         votingSystem.withdraw();
 
